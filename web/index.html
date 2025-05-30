@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP 测试工具</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-cogs"></i> MCP 测试工具</h1>
+                <p>测试您的 Model Context Protocol 服务</p>
+            </div>
+        </header>
+
+        <main class="main">
+            <!-- MCP 服务器连接状态 -->
+            <section class="connection-section">
+                <div class="card">
+                    <h2><i class="fas fa-plug"></i> 服务器连接</h2>
+                    <div class="connection-status">
+                        <div class="status-indicator" id="connectionStatus">
+                            <span class="status-dot disconnected"></span>
+                            <span class="status-text">未连接</span>
+                        </div>
+                        <div class="connection-controls">
+                            <input type="url" id="swaggerUrl" placeholder="输入 Swagger JSON URL" 
+                                   value="http://localhost:8080/swagger.json">
+                            <button id="connectBtn" class="btn btn-primary">
+                                <i class="fas fa-play"></i> 启动 MCP 服务
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 工具列表 -->
+            <section class="tools-section">
+                <div class="card">
+                    <h2><i class="fas fa-toolbox"></i> 可用工具</h2>
+                    <div id="toolsList" class="tools-list">
+                        <div class="loading">等待连接 MCP 服务器...</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- API 信息查询 -->
+            <section class="query-section">
+                <div class="card">
+                    <h2><i class="fas fa-search"></i> API 信息查询</h2>
+                    <form id="apiQueryForm" class="query-form">
+                        <div class="form-group">
+                            <label for="controller">Controller 名称:</label>
+                            <input type="text" id="controller" name="controller" 
+                                   placeholder="例如: UserController" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="method">Method 名称:</label>
+                            <input type="text" id="method" name="method" 
+                                   placeholder="例如: getUserById" required>
+                        </div>
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-paper-plane"></i> 查询 API 信息
+                        </button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- 结果显示 -->
+            <section class="results-section">
+                <div class="card">
+                    <h2><i class="fas fa-code"></i> 查询结果</h2>
+                    <div id="results" class="results-container">
+                        <div class="no-results">暂无查询结果</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 日志 -->
+            <section class="logs-section">
+                <div class="card">
+                    <h2><i class="fas fa-terminal"></i> 操作日志</h2>
+                    <div id="logs" class="logs-container">
+                        <div class="log-entry info">
+                            <span class="timestamp">[开始]</span>
+                            <span class="message">MCP 测试工具已加载</span>
+                        </div>
+                    </div>
+                    <button id="clearLogs" class="btn btn-secondary btn-small">
+                        <i class="fas fa-trash"></i> 清空日志
+                    </button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
