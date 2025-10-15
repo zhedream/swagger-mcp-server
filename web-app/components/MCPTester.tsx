@@ -39,13 +39,15 @@ export default function MCPTester() {
     setApiInfo(null)
 
     try {
-      const response = await fetch('/api/mcp-test', {
+      const response = await fetch('/api/mcp-real', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ url: swaggerUrl }),
       })
+
+      
 
       if (!response.ok) {
         const errorData = await response.json()

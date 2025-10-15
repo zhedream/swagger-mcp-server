@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { spawn } from 'child_process'
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import path from 'path'
 
 export async function POST(request: NextRequest) {
@@ -14,73 +15,65 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 使用 spawn 调用 MCP 服务
-    return new Promise((resolve) => {
-      const mcpPath = path.join(process.cwd(), '..', 'dist', 'client.js')
-      const child = spawn('node', [mcpPath, url])
-      
-      let output = ''
-      let error = ''
+    console.log('Received URL:', url)
 
-      child.stdout.on('data', (data) => {
-        output += data.toString()
-      })
-
-      child.stderr.on('data', (data) => {
-        error += data.toString()
-      })
-
-      child.on('close', (code) => {
-        if (code !== 0) {
-          resolve(NextResponse.json(
-            { error: error || 'MCP service failed' },
-            { status: 500 }
-          ))
-          return
-        }
-
-        try {
-          // 解析输出
-          const lines = output.trim().split('\n')
-          const lastLine = lines[lines.length - 1]
-          const apiInfo = JSON.parse(lastLine)
-
-          // 处理响应数据
-          const processedInfo = {
-            info: apiInfo.info || {},
-            servers: apiInfo.servers || [],
-            host: apiInfo.host,
-            basePath: apiInfo.basePath,
-            endpoints: apiInfo.paths ? Object.entries(apiInfo.paths).flatMap(([path, methods]: [string, any]) => 
-              Object.entries(methods).map(([method, details]: [string, any]) => ({
-                path,
-                method: method.toUpperCase(),
-                summary: details.summary || '',
-                description: details.description || '',
-                operationId: details.operationId || '',
-                tags: details.tags || [],
-                parameters: details.parameters || []
-              }))
-            ) : [],
-            schemas: apiInfo.components?.schemas || apiInfo.definitions || {}
-          }
-
-          resolve(NextResponse.json(processedInfo))
-        } catch (parseError) {
-          resolve(NextResponse.json(
-            { error: 'Failed to parse MCP response' },
-            { status: 500 }
-          ))
-        }
-      })
-
-      child.on('error', (err) => {
-        resolve(NextResponse.json(
-          { error: err.message },
-          { status: 500 }
-        ))
-      })
+    // 创建 MCP 客户端传输层
+    const transport = new StdioClientTransport({
+      command: "node",
+      args: [
+        path.join(process.cwd(), '..', 'dist', 'index.js'),
+        url
+      ]
     })
+
+    // 创建客户端实例
+    const client = new Client(
+      {
+        name: "web-app-client",
+        version: "1.0.0"
+      },
+      {
+        capabilities: {
+          tools: {}
+        }
+      }
+    )
+
+    try {
+      // 连接到 MCP 服务器
+      console.log('Connecting to MCP server...')
+      await client.connect(transport)
+      console.log('Connected to MCP server')
+
+      // 列出可用的工具
+      const tools = await client.listTools()
+      console.log('Available tools:', tools)
+
+      // 获取基本的 API 信息
+      // 这里可以根据需要调用具体的工具
+      const apiInfo = {
+        tools: tools.tools,
+        url: url,
+        status: 'connected',
+        message: 'Successfully connected to MCP server'
+      }
+
+      // 关闭连接
+      await client.close()
+
+      return NextResponse.json(apiInfo)
+
+    } catch (clientError) {
+      console.error('Client error:', clientError)
+      return NextResponse.json(
+        { 
+          error: clientError instanceof Error ? clientError.message : 'Failed to connect to MCP server',
+          details: clientError
+        },
+        { status: 500 }
+      )
+    }
+
   } catch (error) {
     console.error('MCP Service Error:', error)
     return NextResponse.json(

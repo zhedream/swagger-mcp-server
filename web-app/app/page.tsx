@@ -1,4 +1,4 @@
-import MCPTester from '@/components/MCPTester'
+import MCPTester from '../components/MCPTester'
 
 export default function Home() {
   return (
