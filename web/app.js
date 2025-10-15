@@ -2,6 +2,8 @@ class MCPTestApp {
     constructor() {
         this.isConnected = false;
         this.mcpProcess = null;
+        this.isFormatted = false; // 当前显示格式状态
+        this.rawResultData = null; // 存储原始结果数据
         this.initializeEventListeners();
         this.logMessage('info', 'MCP 测试工具已加载');
     }
@@ -21,6 +23,21 @@ class MCPTestApp {
         // 清空日志按钮
         document.getElementById('clearLogs').addEventListener('click', () => {
             this.clearLogs();
+        });
+
+        // 复制结果按钮
+        document.getElementById('copyResultBtn').addEventListener('click', () => {
+            this.copyResults();
+        });
+
+        // 无格式复制按钮
+        document.getElementById('copyCompactBtn').addEventListener('click', () => {
+            this.copyCompactResults();
+        });
+
+        // 格式切换按钮
+        document.getElementById('toggleFormatBtn').addEventListener('click', () => {
+            this.toggleResultFormat();
         });
     }
 
@@ -165,11 +182,10 @@ class MCPTestApp {
             return;
         }
 
-        const controller = document.getElementById('controller').value.trim();
-        const method = document.getElementById('method').value.trim();
+        const apiPath = document.getElementById('apiPath').value.trim();
 
-        if (!controller || !method) {
-            this.logMessage('error', '请填写完整的 Controller 和 Method 名称');
+        if (!apiPath) {
+            this.logMessage('error', '请填写 API 路径');
             return;
         }
 
@@ -182,7 +198,7 @@ class MCPTestApp {
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 查询中...';
             resultsContainer.innerHTML = '<div class="loading">正在查询 API 信息...</div>';
 
-            this.logMessage('info', `查询 API 信息: ${controller}.${method}`);
+            this.logMessage('info', `查询 API 信息: ${apiPath}`);
 
             // 调用后端API
             const response = await fetch('/api/mcp/call-tool', {
@@ -193,8 +209,7 @@ class MCPTestApp {
                 body: JSON.stringify({
                     name: 'getApiInfo',
                     arguments: {
-                        controller,
-                        method
+                        apiPath
                     }
                 })
             });
@@ -203,7 +218,7 @@ class MCPTestApp {
 
             if (response.ok) {
                 this.displayResults(result.content, 'success');
-                this.logMessage('success', `成功获取 ${controller}.${method} 的 API 信息`);
+                this.logMessage('success', `成功获取 ${apiPath} 的 API 信息`);
             } else {
                 throw new Error(result.error || '查询失败');
             }
@@ -218,12 +233,141 @@ class MCPTestApp {
 
     displayResults(content, type = 'info') {
         const resultsContainer = document.getElementById('results');
+        const copyBtn = document.getElementById('copyResultBtn');
+        const copyCompactBtn = document.getElementById('copyCompactBtn');
+        const toggleFormatBtn = document.getElementById('toggleFormatBtn');
+
         resultsContainer.className = `results-container ${type}`;
-        
+
+        // 提取文本内容
+        let textContent;
         if (Array.isArray(content)) {
-            resultsContainer.textContent = content.map(item => item.text).join('\n');
+            textContent = content.map(item => item.text).join('\n');
         } else {
-            resultsContainer.textContent = content;
+            textContent = content;
+        }
+
+        // 存储原始数据
+        this.rawResultData = textContent;
+
+        // 默认无格式显示
+        this.isFormatted = false;
+        resultsContainer.textContent = textContent;
+
+        // 只有在有实际内容时才显示按钮
+        if (textContent && textContent.trim() && type === 'success') {
+            copyBtn.style.display = 'inline-flex';
+            copyCompactBtn.style.display = 'inline-flex';
+            toggleFormatBtn.style.display = 'inline-flex';
+            toggleFormatBtn.innerHTML = '<i class="fas fa-indent"></i> 格式化显示';
+        } else {
+            copyBtn.style.display = 'none';
+            copyCompactBtn.style.display = 'none';
+            toggleFormatBtn.style.display = 'none';
+        }
+    }
+
+    toggleResultFormat() {
+        if (!this.rawResultData) {
+            return;
+        }
+
+        const resultsContainer = document.getElementById('results');
+        const toggleFormatBtn = document.getElementById('toggleFormatBtn');
+
+        this.isFormatted = !this.isFormatted;
+
+        if (this.isFormatted) {
+            // 格式化显示
+            try {
+                const jsonObj = JSON.parse(this.rawResultData);
+                resultsContainer.textContent = JSON.stringify(jsonObj, null, 2);
+                toggleFormatBtn.innerHTML = '<i class="fas fa-compress"></i> 无格式显示';
+                this.logMessage('info', '已切换到格式化显示');
+            } catch (e) {
+                // 如果不是 JSON,保持原样
+                resultsContainer.textContent = this.rawResultData;
+                this.isFormatted = false;
+                this.logMessage('warning', '内容不是有效的 JSON,无法格式化');
+            }
+        } else {
+            // 无格式显示
+            resultsContainer.textContent = this.rawResultData;
+            toggleFormatBtn.innerHTML = '<i class="fas fa-indent"></i> 格式化显示';
+            this.logMessage('info', '已切换到无格式显示');
+        }
+    }
+
+    async copyResults() {
+        if (!this.rawResultData || !this.rawResultData.trim()) {
+            this.logMessage('warning', '没有可复制的内容');
+            return;
+        }
+
+        try {
+            // 格式化复制 - 无论当前显示格式如何,都进行格式化复制
+            let formattedText;
+            try {
+                const jsonObj = JSON.parse(this.rawResultData);
+                formattedText = JSON.stringify(jsonObj, null, 2);
+            } catch (e) {
+                // 如果不是 JSON,直接复制原文本
+                formattedText = this.rawResultData;
+            }
+
+            await navigator.clipboard.writeText(formattedText);
+            this.logMessage('success', '格式化结果已复制到剪贴板');
+
+            // 临时改变按钮文本以提供视觉反馈
+            const copyBtn = document.getElementById('copyResultBtn');
+            const originalHTML = copyBtn.innerHTML;
+            copyBtn.innerHTML = '<i class="fas fa-check"></i> 已复制';
+            copyBtn.disabled = true;
+
+            setTimeout(() => {
+                copyBtn.innerHTML = originalHTML;
+                copyBtn.disabled = false;
+            }, 2000);
+        } catch (error) {
+            this.logMessage('error', `复制失败: ${error.message}`);
+        }
+    }
+
+    async copyCompactResults() {
+        const resultsContainer = document.getElementById('results');
+        const text = resultsContainer.textContent;
+
+        if (!text || !text.trim()) {
+            this.logMessage('warning', '没有可复制的内容');
+            return;
+        }
+
+        try {
+            // 尝试解析为 JSON 并压缩
+            let compactText;
+            try {
+                const jsonObj = JSON.parse(text);
+                compactText = JSON.stringify(jsonObj);
+            } catch (e) {
+                // 如果不是 JSON，则移除所有换行和多余空格
+                compactText = text.replace(/\s+/g, ' ').trim();
+            }
+
+            await navigator.clipboard.writeText(compactText);
+            this.logMessage('success', '无格式结果已复制到剪贴板');
+
+            // 临时改变按钮文本以提供视觉反馈
+            const copyBtn = document.getElementById('copyCompactBtn');
+            const originalHTML = copyBtn.innerHTML;
+            copyBtn.innerHTML = '<i class="fas fa-check"></i> 已复制';
+            copyBtn.disabled = true;
+
+            setTimeout(() => {
+                copyBtn.innerHTML = originalHTML;
+                copyBtn.disabled = false;
+            }, 2000);
+        } catch (error) {
+            this.logMessage('error', `复制失败: ${error.message}`);
         }
     }
 
