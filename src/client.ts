@@ -40,11 +40,14 @@ async function main() {
         console.log("\n可用工具列表:", JSON.stringify(tools, null, 2));
 
         // 调用 getApiInfo 工具示例
+        // 支持多种格式：
+        // - api.apis.create
+        // - api/apis/create
+        // - /api/apis/create
         const result = await client.callTool({
             name: "getApiInfo",
             arguments: {
-                controller: "AlarmPush",  // 这里替换为实际的控制器名
-                method: "EditAlarmRule"       // 这里替换为实际的方法名
+                apiPath: "AlarmPush.EditAlarmRule"  // 这里替换为实际的 API 路径
             }
         });
 

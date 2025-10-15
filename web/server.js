@@ -13,7 +13,7 @@ class MCPWebServer {
         this.isConnected = false;
         this.messageId = 1;
         this.pendingRequests = new Map();
-        
+
         this.setupMiddleware();
         this.setupRoutes();
     }
@@ -21,10 +21,10 @@ class MCPWebServer {
     setupMiddleware() {
         // 解析 JSON 请求体
         this.app.use(express.json());
-        
+
         // 静态文件服务
         this.app.use(express.static(__dirname));
-        
+
         // CORS 支持
         this.app.use((req, res, next) => {
             res.header('Access-Control-Allow-Origin', '*');
@@ -39,7 +39,7 @@ class MCPWebServer {
         this.app.post('/api/mcp/start', async (req, res) => {
             try {
                 const { swaggerUrl } = req.body;
-                
+
                 if (!swaggerUrl) {
                     return res.status(400).json({ error: 'Swagger URL is required' });
                 }
@@ -92,7 +92,7 @@ class MCPWebServer {
                 }
 
                 const { name, arguments: args } = req.body;
-                
+
                 const response = await this.sendMCPRequest({
                     jsonrpc: '2.0',
                     id: this.getNextMessageId(),
@@ -111,8 +111,8 @@ class MCPWebServer {
 
         // 健康检查
         this.app.get('/api/health', (req, res) => {
-            res.json({ 
-                status: 'ok', 
+            res.json({
+                status: 'ok',
                 mcpConnected: this.isConnected,
                 timestamp: new Date().toISOString()
             });
@@ -128,7 +128,7 @@ class MCPWebServer {
         return new Promise((resolve, reject) => {
             // 构建 MCP 服务器命令
             const scriptPath = path.join(__dirname, '..', 'dist', 'index.js');
-            
+
             // 启动 MCP 子进程
             this.mcpProcess = spawn('node', [scriptPath, swaggerUrl], {
                 stdio: ['pipe', 'pipe', 'pipe']
@@ -149,7 +149,7 @@ class MCPWebServer {
             this.mcpProcess.stdout.on('data', (data) => {
                 try {
                     const lines = data.toString().split('\n').filter(line => line.trim());
-                    
+
                     for (const line of lines) {
                         try {
                             const message = JSON.parse(line);
@@ -233,14 +233,14 @@ class MCPWebServer {
     async stopMCPServer() {
         if (this.mcpProcess) {
             this.mcpProcess.kill('SIGTERM');
-            
+
             // 等待进程退出
             await new Promise((resolve) => {
                 if (!this.mcpProcess) {
                     resolve();
                     return;
                 }
-                
+
                 const timeout = setTimeout(() => {
                     if (this.mcpProcess) {
                         this.mcpProcess.kill('SIGKILL');
@@ -254,7 +254,7 @@ class MCPWebServer {
                 });
             });
         }
-        
+
         this.isConnected = false;
         this.mcpProcess = null;
         this.pendingRequests.clear();
@@ -264,7 +264,7 @@ class MCPWebServer {
         if (message.id && this.pendingRequests.has(message.id)) {
             const { resolve, reject } = this.pendingRequests.get(message.id);
             this.pendingRequests.delete(message.id);
-            
+
             if (message.error) {
                 reject(new Error(message.error.message || 'MCP error'));
             } else {
@@ -323,7 +323,7 @@ class MCPWebServer {
 
     start(port = 3000) {
         this.app.listen(port, () => {
-            console.log(`MCP Web Server is running on http://localhost:${port}`);
+            console.log(`MCP Web Server is running on http://127.0.0.1:${port}`);
         });
 
         // 优雅关闭

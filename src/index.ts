@@ -14,9 +14,20 @@ let swaggerParser: SwaggerParser;
 
 // 定义参数验证 Schema
 const GetApiInfoArgumentsSchema = z.object({
-    controller: z.string(),
-    method: z.string(),
+    apiPath: z.string(),
 });
+
+// 路径解析函数：支持点号、斜杠、前导斜杠格式
+function parseApiPath(path: string): string[] {
+    // 移除前导斜杠
+    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+
+    // 统一替换斜杠为点号，然后分割
+    const parts = cleanPath.replace(/\//g, '.').split('.');
+
+    // 过滤掉空字符串
+    return parts.filter(p => p.length > 0);
+}
 
 // 创建服务器实例
 const server = new Server(
@@ -37,20 +48,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         tools: [
             {
                 name: "getApiInfo",
-                description: "获取指定 controller 和 method 的 API 信息",
+                description: "获取指定 API 路径的信息，支持多种格式：api.apis.create 或 api/apis/create 或 /api/apis/create",
                 inputSchema: {
                     type: "object",
                     properties: {
-                        controller: {
+                        apiPath: {
                             type: "string",
-                            description: "API 控制器名称",
-                        },
-                        method: {
-                            type: "string",
-                            description: "API 方法名称",
+                            description: "API 路径，支持点号(.)或斜杠(/)分隔，例如：api.apis.create 或 /api/apis/create",
                         },
                     },
-                    required: ["controller", "method"],
+                    required: ["apiPath"],
                 },
             },
         ],
@@ -63,40 +70,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     try {
         if (name === "getApiInfo") {
-            const { controller, method } = GetApiInfoArgumentsSchema.parse(args);
-            console.log(controller, method);
-            console.log(123123);
-            
-            // 获取 API 信息
-            const apis = swaggerParser.apis;
-            if (!apis[controller]) {
-                return {
-                    content: [
-                        {
-                            type: "text",
-                            text: `未找到控制器: ${controller}`,
-                        },
-                    ],
-                };
+            const { apiPath } = GetApiInfoArgumentsSchema.parse(args);
+
+            // 解析路径为数组
+            const pathParts = parseApiPath(apiPath);
+
+            // 动态访问 apis 对象
+            let current: any = swaggerParser.apis;
+            for (let i = 0; i < pathParts.length; i++) {
+                const part = pathParts[i];
+                if (!current || !current[part]) {
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: `未找到路径: ${pathParts.slice(0, i + 1).join('.')} (完整路径: ${apiPath})`,
+                            },
+                        ],
+                    };
+                }
+                current = current[part];
             }
 
-            const apiInfo = apis[controller][method]
-            if (!apiInfo) {
-                return {
-                    content: [
-                        {
-                            type: "text",
-                            text: `未找到方法: ${method} in ${controller}`,
-                        },
-                    ],
-                };
-            }
-
+            // 返回找到的 API 信息
             return {
                 content: [
                     {
                         type: "text",
-                        text: JSON.stringify(apiInfo, null, 2),
+                        text: JSON.stringify(current, null, 2),
                     },
                 ],
             };
