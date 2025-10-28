@@ -21,18 +21,6 @@ const ListAllApisArgumentsSchema = z.object({
     filter: z.string().optional(),
 });
 
-// 路径解析函数：支持点号、斜杠、前导斜杠格式
-function parseApiPath(path: string): string[] {
-    // 移除前导斜杠
-    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-
-    // 统一替换斜杠为点号，然后分割
-    const parts = cleanPath.replace(/\//g, '.').split('.');
-
-    // 过滤掉空字符串
-    return parts.filter(p => p.length > 0);
-}
-
 // 递归遍历 APIs 对象，提取所有接口信息
 function extractAllApis(obj: any, prefix: string = ''): Array<{path: string, summary: string, description: string}> {
     const results: Array<{path: string, summary: string, description: string}> = [];
@@ -114,35 +102,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (name === "getApiInfo") {
             const { apiPath } = GetApiInfoArgumentsSchema.parse(args);
 
-            // 解析路径为数组
-            const pathParts = parseApiPath(apiPath);
-
-            // 动态访问 apis 对象
-            let current: any = swaggerParser.apis;
-            for (let i = 0; i < pathParts.length; i++) {
-                const part = pathParts[i];
-                if (!current || !current[part]) {
+            // 使用 SwaggerParser 的 toJSON 方法获取指定路径的 API 信息
+            try {
+                const jsonResult = swaggerParser.toJSON(apiPath, true);
+                
+                // 检查是否为空对象
+                if (jsonResult === '{}') {
                     return {
                         content: [
                             {
                                 type: "text",
-                                text: `未找到路径: ${pathParts.slice(0, i + 1).join('.')} (完整路径: ${apiPath})`,
+                                text: `未找到路径: ${apiPath}`,
                             },
                         ],
                     };
                 }
-                current = current[part];
-            }
 
-            // 返回找到的 API 信息
-            return {
-                content: [
-                    {
-                        type: "text",
-                        text: JSON.stringify(current),
-                    },
-                ],
-            };
+                // 返回找到的 API 信息
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: jsonResult,
+                        },
+                    ],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `查询失败: ${error instanceof Error ? error.message : String(error)}`,
+                        },
+                    ],
+                };
+            }
         } else if (name === "listAllApis") {
             const { filter } = ListAllApisArgumentsSchema.parse(args);
 

@@ -336,4 +336,329 @@ export class SwaggerParser {
 
     return tempObj;
   }
+
+  /**
+   * 将 ParsedSchema 转换为可 JSON 序列化的格式
+   * 通过追踪已访问的对象来避免循环引用
+   */
+  private serializeSchema(schema: ParsedSchema, visited = new WeakSet()): any {
+    if (!schema || typeof schema !== 'object') {
+      return schema;
+    }
+
+    // 如果已经访问过这个对象，返回一个引用标记
+    if (visited.has(schema)) {
+      return { $circular: true };
+    }
+
+    visited.add(schema);
+
+    const result: any = {};
+
+    // 复制基本属性
+    const basicProps = [
+      'type', 'description', 'nullable', 'format', 'default',
+      'example', 'deprecated', 'readOnly', 'writeOnly',
+      'minimum', 'maximum', 'minLength', 'maxLength',
+      'pattern', 'enum', 'minItems', 'maxItems', 'uniqueItems'
+    ];
+
+    for (const prop of basicProps) {
+      if (schema[prop as keyof ParsedSchema] !== undefined) {
+        result[prop] = schema[prop as keyof ParsedSchema];
+      }
+    }
+
+    // 处理 required 数组
+    if (schema.required) {
+      result.required = [...schema.required];
+    }
+
+    // 递归处理 properties
+    if (schema.properties) {
+      result.properties = {};
+      for (const [key, value] of Object.entries(schema.properties)) {
+        result.properties[key] = this.serializeSchema(value, visited);
+      }
+    }
+
+    // 递归处理 items
+    if (schema.items) {
+      result.items = this.serializeSchema(schema.items, visited);
+    }
+
+    // 递归处理联合类型
+    if (schema.oneOf) {
+      result.oneOf = schema.oneOf.map(s => this.serializeSchema(s, visited));
+    }
+    if (schema.anyOf) {
+      result.anyOf = schema.anyOf.map(s => this.serializeSchema(s, visited));
+    }
+    if (schema.allOf) {
+      result.allOf = schema.allOf.map(s => this.serializeSchema(s, visited));
+    }
+
+    // 处理 additionalProperties
+    if (schema.additionalProperties !== undefined) {
+      if (typeof schema.additionalProperties === 'boolean') {
+        result.additionalProperties = schema.additionalProperties;
+      } else {
+        result.additionalProperties = this.serializeSchema(schema.additionalProperties, visited);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * 将整个 API 信息序列化为可 JSON 化的格式
+   */
+  private serializeApiInfo(apiInfo: ParsedApiInfo): any {
+    return {
+      path: apiInfo.path,
+      method: apiInfo.method,
+      summary: apiInfo.summary,
+      description: apiInfo.description,
+      tags: [...apiInfo.tags],
+      parameters: apiInfo.parameters.map(param => ({
+        name: param.name,
+        in: param.in,
+        required: param.required,
+        description: param.description,
+        schema: param.schema ? this.serializeSchema(param.schema) : undefined,
+        example: param.example,
+        deprecated: param.deprecated,
+        allowEmptyValue: param.allowEmptyValue
+      })),
+      requestBody: apiInfo.requestBody ? {
+        description: apiInfo.requestBody.description,
+        required: apiInfo.requestBody.required,
+        contentType: apiInfo.requestBody.contentType,
+        schema: this.serializeSchema(apiInfo.requestBody.schema)
+      } : undefined,
+      responses: Object.entries(apiInfo.responses).reduce((acc, [code, response]) => {
+        acc[code] = {
+          description: response.description,
+          contentType: response.contentType,
+          schema: this.serializeSchema(response.schema)
+        };
+        return acc;
+      }, {} as any)
+    };
+  }
+
+  /**
+   * 获取可序列化的 APIs（用于 JSON 输出）
+   */
+  public getSerializableApis(): any {
+    const serialized: any = {};
+
+    const serialize = (obj: any): any => {
+      if (!obj || typeof obj !== 'object') {
+        return obj;
+      }
+
+      // 如果是 ParsedApiInfo，进行序列化
+      if ('path' in obj && 'method' in obj && 'tags' in obj) {
+        return this.serializeApiInfo(obj as ParsedApiInfo);
+      }
+
+      // 递归处理嵌套对象
+      const result: any = {};
+      for (const [key, value] of Object.entries(obj)) {
+        result[key] = serialize(value);
+      }
+      return result;
+    };
+
+    return serialize(this.apis);
+  }
+
+  /**
+   * 将 APIs 转换为 JSON 字符串
+   * @param apiPath 可选的 API 路径过滤，支持格式：/api/users、/api/users/create、api/users/create
+   * @param pretty 是否格式化输出
+   */
+  public toJSON(apiPath?: string, pretty: boolean = true): string {
+    let serialized = this.getSerializableApis();
+
+    if (apiPath) {
+      serialized = this.filterByPath(serialized, apiPath);
+    }
+
+    return pretty ? JSON.stringify(serialized, null, 2) : JSON.stringify(serialized);
+  }
+
+  /**
+   * 将 APIs 转换为可读的文本格式
+   * @param apiPath 可选的 API 路径过滤，支持格式：/api/users、/api/users/create、api/users/create
+   */
+  public toText(apiPath?: string): string {
+    const lines: string[] = [];
+    let serialized = this.getSerializableApis();
+
+    if (apiPath) {
+      serialized = this.filterByPath(serialized, apiPath);
+    }
+
+    const printSchema = (schema: any, indent: string = ''): void => {
+      if (!schema || typeof schema !== 'object') {
+        return;
+      }
+
+      if (schema.$circular) {
+        lines.push(`${indent}[循环引用]`);
+        return;
+      }
+
+      if (schema.type) {
+        lines.push(`${indent}类型: ${schema.type}`);
+      }
+      if (schema.description) {
+        lines.push(`${indent}描述: ${schema.description}`);
+      }
+      if (schema.format) {
+        lines.push(`${indent}格式: ${schema.format}`);
+      }
+      if (schema.enum) {
+        lines.push(`${indent}枚举值: ${schema.enum.join(', ')}`);
+      }
+      if (schema.properties) {
+        lines.push(`${indent}属性:`);
+        for (const [key, value] of Object.entries(schema.properties)) {
+          const required = schema.required?.includes(key) ? ' [必填]' : '';
+          lines.push(`${indent}  - ${key}${required}:`);
+          printSchema(value, indent + '    ');
+        }
+      }
+      if (schema.items) {
+        lines.push(`${indent}数组项:`);
+        printSchema(schema.items, indent + '  ');
+      }
+    };
+
+    const printApi = (apiInfo: any, path: string): void => {
+      lines.push('='.repeat(80));
+      lines.push(`路径: ${path}`);
+      lines.push(`方法: ${apiInfo.method}`);
+      if (apiInfo.summary) {
+        lines.push(`摘要: ${apiInfo.summary}`);
+      }
+      if (apiInfo.description) {
+        lines.push(`描述: ${apiInfo.description}`);
+      }
+      if (apiInfo.tags?.length) {
+        lines.push(`标签: ${apiInfo.tags.join(', ')}`);
+      }
+
+      if (apiInfo.parameters?.length) {
+        lines.push('\n参数:');
+        for (const param of apiInfo.parameters) {
+          const required = param.required ? ' [必填]' : '';
+          lines.push(`  - ${param.name} (${param.in})${required}`);
+          if (param.description) {
+            lines.push(`    描述: ${param.description}`);
+          }
+          if (param.schema) {
+            printSchema(param.schema, '    ');
+          }
+        }
+      }
+
+      if (apiInfo.requestBody) {
+        lines.push('\n请求体:');
+        lines.push(`  Content-Type: ${apiInfo.requestBody.contentType}`);
+        lines.push(`  必填: ${apiInfo.requestBody.required ? '是' : '否'}`);
+        if (apiInfo.requestBody.description) {
+          lines.push(`  描述: ${apiInfo.requestBody.description}`);
+        }
+        lines.push('  Schema:');
+        printSchema(apiInfo.requestBody.schema, '    ');
+      }
+
+      if (apiInfo.responses) {
+        lines.push('\n响应:');
+        for (const [code, response] of Object.entries(apiInfo.responses)) {
+          lines.push(`  状态码 ${code}: ${(response as any).description}`);
+          lines.push(`    Content-Type: ${(response as any).contentType}`);
+          lines.push('    Schema:');
+          printSchema((response as any).schema, '      ');
+        }
+      }
+
+      lines.push('');
+    };
+
+    const traverse = (obj: any, currentPath: string = ''): void => {
+      for (const [key, value] of Object.entries(obj)) {
+        const newPath = currentPath ? `${currentPath}.${key}` : key;
+
+        if (value && typeof value === 'object' && 'path' in value && 'method' in value) {
+          printApi(value, `/${newPath.replace(/\./g, '/')}`);
+        } else if (value && typeof value === 'object') {
+          traverse(value, newPath);
+        }
+      }
+    };
+
+    traverse(serialized);
+
+    return lines.join('\n');
+  }
+
+  /**
+   * 根据路径过滤 API
+   * @param apis 序列化后的 API 对象
+   * @param apiPath API 路径，支持格式：/api/users、/api/users/create、api/users/create
+   * @returns 过滤后的 API 对象
+   */
+  private filterByPath(apis: any, apiPath: string): any {
+    // 标准化路径：移除开头的斜杠，将斜杠替换为点号
+    const normalizedPath = apiPath
+      .replace(/^\/+/, '') // 移除开头的斜杠
+      .replace(/\/+$/, '') // 移除结尾的斜杠
+      .replace(/\//g, '.'); // 将斜杠替换为点号
+
+    if (!normalizedPath) {
+      return apis;
+    }
+
+    const pathParts = normalizedPath.split('.');
+    let current = apis;
+
+    // 逐层查找
+    for (const part of pathParts) {
+      if (current && typeof current === 'object' && part in current) {
+        current = current[part];
+      } else {
+        // 路径不存在，返回空对象
+        return {};
+      }
+    }
+
+    // 如果找到的是单个 API 信息，包装成对象返回
+    if (current && typeof current === 'object' && 'path' in current && 'method' in current) {
+      const lastPart = pathParts[pathParts.length - 1];
+      return { [lastPart]: current };
+    }
+
+    return current || {};
+  }
+
+  /**
+   * 获取指定路径的 API 信息
+   * @param apiPath API 路径，支持格式：/api/users、/api/users/create、api/users/create
+   * @returns API 信息对象或 undefined
+   */
+  public getApiByPath(apiPath: string): any {
+    const serialized = this.getSerializableApis();
+    const filtered = this.filterByPath(serialized, apiPath);
+
+    // 如果结果为空对象，返回 undefined
+    if (Object.keys(filtered).length === 0) {
+      return undefined;
+    }
+
+    return filtered;
+  }
 }
