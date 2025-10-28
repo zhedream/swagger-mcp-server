@@ -7,6 +7,7 @@ class MCPTestApp {
         this.allApis = []; // 存储所有接口列表
         this.filteredApis = []; // 存储过滤后的接口列表
         this.initializeEventListeners();
+        this.restoreSwaggerUrl(); // 恢复上次选择的 Swagger URL
         this.checkServerStatus(); // 检查服务器状态
         this.logMessage('info', 'MCP 测试工具已加载');
     }
@@ -47,6 +48,12 @@ class MCPTestApp {
         document.getElementById('apiSearchInput').addEventListener('input', (e) => {
             this.filterApiList(e.target.value);
         });
+
+        // Swagger URL 下拉框变化时保存选择
+        document.getElementById('swaggerUrl').addEventListener('change', (e) => {
+            this.saveSwaggerUrl(e.target.value);
+            this.logMessage('info', '已保存 Swagger URL 选择');
+        });
     }
 
     async checkServerStatus() {
@@ -61,13 +68,19 @@ class MCPTestApp {
                 const btn = document.getElementById('connectBtn');
                 const statusDot = document.querySelector('.status-dot');
                 const statusText = document.querySelector('.status-text');
-                const swaggerUrlInput = document.getElementById('swaggerUrl');
+                const swaggerUrlSelect = document.getElementById('swaggerUrl');
 
                 this.isConnected = true;
                 statusDot.className = 'status-dot connected';
                 statusText.textContent = '已连接';
                 btn.innerHTML = '<i class="fas fa-stop"></i> 停止 MCP 服务';
-                swaggerUrlInput.value = status.swaggerUrl;
+
+                // 设置下拉框的值（如果在选项中）
+                const options = Array.from(swaggerUrlSelect.options);
+                const matchingOption = options.find(opt => opt.value === status.swaggerUrl);
+                if (matchingOption) {
+                    swaggerUrlSelect.value = status.swaggerUrl;
+                }
 
                 this.logMessage('success', '已恢复 MCP 服务器连接');
 
@@ -81,7 +94,6 @@ class MCPTestApp {
     }
 
     async toggleConnection() {
-        const btn = document.getElementById('connectBtn');
         const swaggerUrl = document.getElementById('swaggerUrl').value.trim();
 
         if (!swaggerUrl) {
@@ -127,6 +139,9 @@ class MCPTestApp {
                 statusText.textContent = '已连接';
                 btn.innerHTML = '<i class="fas fa-stop"></i> 停止 MCP 服务';
                 btn.disabled = false;
+
+                // 保存选择的 Swagger URL
+                this.saveSwaggerUrl(swaggerUrl);
 
                 this.logMessage('success', 'MCP 服务器启动成功');
 
@@ -527,6 +542,24 @@ class MCPTestApp {
                 <span class="message">日志已清空</span>
             </div>
         `;
+    }
+
+    restoreSwaggerUrl() {
+        const savedUrl = localStorage.getItem('mcp_swagger_url');
+        if (savedUrl) {
+            const swaggerUrlSelect = document.getElementById('swaggerUrl');
+            // 检查保存的 URL 是否在选项中
+            const options = Array.from(swaggerUrlSelect.options);
+            const matchingOption = options.find(opt => opt.value === savedUrl);
+            if (matchingOption) {
+                swaggerUrlSelect.value = savedUrl;
+                this.logMessage('info', `已恢复上次选择的 Swagger URL`);
+            }
+        }
+    }
+
+    saveSwaggerUrl(url) {
+        localStorage.setItem('mcp_swagger_url', url);
     }
 }
 

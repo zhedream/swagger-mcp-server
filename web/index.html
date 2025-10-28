@@ -28,8 +28,13 @@
                             <span class="status-text">未连接</span>
                         </div>
                         <div class="connection-controls">
-                            <input type="url" id="swaggerUrl" placeholder="输入 Swagger JSON URL" 
-                                   value="http://127.0.0.1:3000/api.json">
+                            <select id="swaggerUrl" class="swagger-select">
+                                <option value="http://127.0.0.1:3000/api.json">api.json</option>
+                                <option value="http://127.0.0.1:3000/api2.json">api2.json</option>
+                                <option value="http://172.16.12.219:8004/swagger/v1/swagger.json">172.16.12.219:8004 - Swagger V1</option>
+                                <option value="http://172.16.12.219:8901/AirOps/swagger.json">172.16.12.219:8901 - AirOps</option>
+                                <option value="http://172.16.12.52:8099/Car_Center/swagger.json">172.16.12.52:8099 - Car Center</option>
+                            </select>
                             <button id="connectBtn" class="btn btn-primary">
                                 <i class="fas fa-play"></i> 启动 MCP 服务
                             </button>
