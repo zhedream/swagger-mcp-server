@@ -17,6 +17,10 @@ const GetApiInfoArgumentsSchema = z.object({
     apiPath: z.string(),
 });
 
+const ListAllApisArgumentsSchema = z.object({
+    filter: z.string().optional(),
+});
+
 // 路径解析函数：支持点号、斜杠、前导斜杠格式
 function parseApiPath(path: string): string[] {
     // 移除前导斜杠
@@ -27,6 +31,30 @@ function parseApiPath(path: string): string[] {
 
     // 过滤掉空字符串
     return parts.filter(p => p.length > 0);
+}
+
+// 递归遍历 APIs 对象，提取所有接口信息
+function extractAllApis(obj: any, prefix: string = ''): Array<{path: string, summary: string, description: string}> {
+    const results: Array<{path: string, summary: string, description: string}> = [];
+
+    for (const key in obj) {
+        const value = obj[key];
+        const currentPath = prefix ? `${prefix}.${key}` : key;
+
+        // 如果对象有 path 和 method 属性，说明这是一个 API 端点
+        if (value && typeof value === 'object' && 'path' in value && 'method' in value) {
+            results.push({
+                path: value.path,
+                summary: value.summary || '',
+                description: value.description || value.summary || ''
+            });
+        } else if (value && typeof value === 'object') {
+            // 继续递归
+            results.push(...extractAllApis(value, currentPath));
+        }
+    }
+
+    return results;
 }
 
 // 创建服务器实例
@@ -48,16 +76,30 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         tools: [
             {
                 name: "getApiInfo",
-                description: "获取指定 API 路径的信息，支持多种格式：api.apis.create 或 api/apis/create 或 /api/apis/create",
+                description: "获取指定 API 路径的信息，支持多种格式：/api/apis/create 或 api/apis/create 或 api.apis.create",
                 inputSchema: {
                     type: "object",
                     properties: {
                         apiPath: {
                             type: "string",
-                            description: "API 路径，支持点号(.)或斜杠(/)分隔，例如：api.apis.create 或 /api/apis/create",
+                            description: "API 路径，支持斜杠(/)或点号(.)分隔，例如：/api/apis/create 、 api/apis/create 或 api.apis.create",
                         },
                     },
                     required: ["apiPath"],
+                },
+            },
+            {
+                name: "listAllApis",
+                description: "列出所有可用的 API 接口及其描述信息，支持可选的关键词筛选",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        filter: {
+                            type: "string",
+                            description: "可选的筛选关键词，用于过滤接口路径或描述（不区分大小写）",
+                        },
+                    },
+                    required: [],
                 },
             },
         ],
@@ -98,6 +140,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     {
                         type: "text",
                         text: JSON.stringify(current),
+                    },
+                ],
+            };
+        } else if (name === "listAllApis") {
+            const { filter } = ListAllApisArgumentsSchema.parse(args);
+
+            // 提取所有 API 列表
+            let allApis = extractAllApis(swaggerParser.apis);
+
+            // 如果提供了筛选参数，则进行筛选
+            if (filter && filter.trim()) {
+                const lowerFilter = filter.toLowerCase();
+                allApis = allApis.filter(api =>
+                    api.path.toLowerCase().includes(lowerFilter) ||
+                    api.summary.toLowerCase().includes(lowerFilter) ||
+                    api.description.toLowerCase().includes(lowerFilter)
+                );
+            }
+
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: JSON.stringify(allApis),
                     },
                 ],
             };

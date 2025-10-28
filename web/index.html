@@ -48,6 +48,19 @@
                 </div>
             </section>
 
+            <!-- 接口列表 -->
+            <section class="api-list-section">
+                <div class="card">
+                    <h2><i class="fas fa-list"></i> 接口列表</h2>
+                    <div class="api-list-controls">
+                        <input type="text" id="apiSearchInput" placeholder="搜索接口..." class="search-input">
+                    </div>
+                    <div id="apiList" class="api-list">
+                        <div class="loading">等待加载接口列表...</div>
+                    </div>
+                </div>
+            </section>
+
             <!-- API 信息查询 -->
             <section class="query-section">
                 <div class="card">
@@ -56,10 +69,10 @@
                         <div class="form-group">
                             <label for="apiPath">API 路径:</label>
                             <input type="text" id="apiPath" name="apiPath"
-                                   placeholder="例如: api.apis.create 或 /api/apis/create"
-                                   value="AbnormalPoint.CalculationAbnormalPoint" required>
+                                   placeholder="例如: /api/apis/create 或 api.apis.create"
+                                   value="/AbnormalPoint/CalculationAbnormalPoint" required>
                             <small class="form-hint">
-                                支持格式：<code>api.apis.create</code> 或 <code>api/apis/create</code> 或 <code>/api/apis/create</code>
+                                支持格式：<code>/api/apis/create</code> 或 <code>api/apis/create</code> 或 <code>api.apis.create</code>
                             </small>
                         </div>
                         <button type="submit" class="btn btn-success">

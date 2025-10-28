@@ -4,7 +4,10 @@ class MCPTestApp {
         this.mcpProcess = null;
         this.isFormatted = false; // 当前显示格式状态
         this.rawResultData = null; // 存储原始结果数据
+        this.allApis = []; // 存储所有接口列表
+        this.filteredApis = []; // 存储过滤后的接口列表
         this.initializeEventListeners();
+        this.checkServerStatus(); // 检查服务器状态
         this.logMessage('info', 'MCP 测试工具已加载');
     }
 
@@ -39,6 +42,42 @@ class MCPTestApp {
         document.getElementById('toggleFormatBtn').addEventListener('click', () => {
             this.toggleResultFormat();
         });
+
+        // 搜索输入框
+        document.getElementById('apiSearchInput').addEventListener('input', (e) => {
+            this.filterApiList(e.target.value);
+        });
+    }
+
+    async checkServerStatus() {
+        try {
+            const response = await fetch('/api/mcp/status');
+            const status = await response.json();
+
+            if (status.isConnected && status.swaggerUrl) {
+                this.logMessage('info', '检测到 MCP 服务器正在运行，正在恢复连接...');
+
+                // 更新 UI 状态
+                const btn = document.getElementById('connectBtn');
+                const statusDot = document.querySelector('.status-dot');
+                const statusText = document.querySelector('.status-text');
+                const swaggerUrlInput = document.getElementById('swaggerUrl');
+
+                this.isConnected = true;
+                statusDot.className = 'status-dot connected';
+                statusText.textContent = '已连接';
+                btn.innerHTML = '<i class="fas fa-stop"></i> 停止 MCP 服务';
+                swaggerUrlInput.value = status.swaggerUrl;
+
+                this.logMessage('success', '已恢复 MCP 服务器连接');
+
+                // 加载工具和接口列表
+                await this.loadTools();
+                await this.loadApiList();
+            }
+        } catch (error) {
+            console.log('无法检查服务器状态:', error.message);
+        }
     }
 
     async toggleConnection() {
@@ -90,9 +129,12 @@ class MCPTestApp {
                 btn.disabled = false;
 
                 this.logMessage('success', 'MCP 服务器启动成功');
-                
+
                 // 获取可用工具
                 await this.loadTools();
+
+                // 加载接口列表
+                await this.loadApiList();
             } else {
                 throw new Error(result.error || '启动 MCP 服务器失败');
             }
@@ -123,9 +165,10 @@ class MCPTestApp {
                 statusDot.className = 'status-dot disconnected';
                 statusText.textContent = '未连接';
                 btn.innerHTML = '<i class="fas fa-play"></i> 启动 MCP 服务';
-                
+
                 this.logMessage('info', 'MCP 服务器已停止');
                 this.clearToolsList();
+                this.clearApiList();
             } else {
                 throw new Error('停止 MCP 服务器失败');
             }
@@ -174,6 +217,96 @@ class MCPTestApp {
     clearToolsList() {
         const toolsList = document.getElementById('toolsList');
         toolsList.innerHTML = '<div class="loading">等待连接 MCP 服务器...</div>';
+    }
+
+    async loadApiList() {
+        try {
+            this.logMessage('info', '正在获取接口列表...');
+
+            const response = await fetch('/api/mcp/call-tool', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    name: 'listAllApis',
+                    arguments: {}
+                })
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.content) {
+                const apiListText = result.content[0].text;
+                this.allApis = JSON.parse(apiListText);
+                this.filteredApis = [...this.allApis];
+                this.displayApiList(this.filteredApis);
+                this.logMessage('success', `成功加载 ${this.allApis.length} 个接口`);
+            } else {
+                throw new Error(result.error || '获取接口列表失败');
+            }
+        } catch (error) {
+            this.logMessage('error', `获取接口列表失败: ${error.message}`);
+        }
+    }
+
+    displayApiList(apis) {
+        const apiList = document.getElementById('apiList');
+
+        if (apis.length === 0) {
+            apiList.innerHTML = '<div class="no-results">没有找到匹配的接口</div>';
+            return;
+        }
+
+        apiList.innerHTML = apis.map(api => `
+            <div class="api-item" data-path="${api.path}">
+                <div class="api-item-path">${api.path}</div>
+                <div class="api-item-description">${api.description || '暂无描述'}</div>
+            </div>
+        `).join('');
+
+        // 为每个接口项添加点击事件
+        apiList.querySelectorAll('.api-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const apiPath = item.getAttribute('data-path');
+                this.selectApi(apiPath);
+            });
+        });
+    }
+
+    filterApiList(searchTerm) {
+        if (!searchTerm || !searchTerm.trim()) {
+            this.filteredApis = [...this.allApis];
+        } else {
+            const lowerSearchTerm = searchTerm.toLowerCase();
+            this.filteredApis = this.allApis.filter(api =>
+                api.path.toLowerCase().includes(lowerSearchTerm) ||
+                api.description.toLowerCase().includes(lowerSearchTerm)
+            );
+        }
+        this.displayApiList(this.filteredApis);
+    }
+
+    selectApi(apiPath) {
+        // 填充到输入框
+        const apiPathInput = document.getElementById('apiPath');
+        apiPathInput.value = apiPath;
+
+        // 触发查询
+        this.queryApiInfo();
+
+        // 滚动到结果区域
+        document.querySelector('.results-section').scrollIntoView({ behavior: 'smooth' });
+
+        this.logMessage('info', `已选择接口: ${apiPath}`);
+    }
+
+    clearApiList() {
+        const apiList = document.getElementById('apiList');
+        apiList.innerHTML = '<div class="loading">等待加载接口列表...</div>';
+        this.allApis = [];
+        this.filteredApis = [];
+        document.getElementById('apiSearchInput').value = '';
     }
 
     async queryApiInfo() {

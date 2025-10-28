@@ -11,6 +11,7 @@ class MCPWebServer {
         this.app = express();
         this.mcpProcess = null;
         this.isConnected = false;
+        this.currentSwaggerUrl = null;
         this.messageId = 1;
         this.pendingRequests = new Map();
 
@@ -44,11 +45,23 @@ class MCPWebServer {
                     return res.status(400).json({ error: 'Swagger URL is required' });
                 }
 
+                // 如果已连接
                 if (this.isConnected) {
-                    return res.status(400).json({ error: 'MCP server is already running' });
+                    // 如果是相同的 URL，直接返回成功
+                    if (this.currentSwaggerUrl === swaggerUrl) {
+                        return res.json({
+                            success: true,
+                            message: 'MCP server is already running with the same configuration',
+                            alreadyRunning: true
+                        });
+                    }
+                    // 如果是不同的 URL，先停止再启动
+                    console.log('Switching to new Swagger URL, stopping current server...');
+                    await this.stopMCPServer();
                 }
 
                 await this.startMCPServer(swaggerUrl);
+                this.currentSwaggerUrl = swaggerUrl;
                 res.json({ success: true, message: 'MCP server started' });
             } catch (error) {
                 res.status(500).json({ error: error.message });
@@ -107,6 +120,15 @@ class MCPWebServer {
             } catch (error) {
                 res.status(500).json({ error: error.message });
             }
+        });
+
+        // 获取 MCP 服务器状态
+        this.app.get('/api/mcp/status', (req, res) => {
+            res.json({
+                isConnected: this.isConnected,
+                swaggerUrl: this.currentSwaggerUrl,
+                timestamp: new Date().toISOString()
+            });
         });
 
         // 健康检查
@@ -257,6 +279,7 @@ class MCPWebServer {
 
         this.isConnected = false;
         this.mcpProcess = null;
+        this.currentSwaggerUrl = null;
         this.pendingRequests.clear();
     }
 
