@@ -14,21 +14,79 @@
 
 ## 快速开始
 
+文档 URL 作为第一个参数传入。可选第二个参数是自动刷新间隔（分钟），默认 10，`0` 表示关闭。命令行第二个参数优先，否则读环境变量 `SWAGGER_REFRESH_MINUTES`。
+
+### npx
+
+需要 Node.js 20+。
+
 ```bash
+npx -y @zhedream/swagger-mcp-server http://your-host/swagger.json
+# npx -y @zhedream/swagger-mcp-server http://your-host/swagger.json 5
+```
+
+### 源码安装
+
+```bash
+git clone https://github.com/zhedream/swagger-mcp-server.git
+cd swagger-mcp-server
 npm install
 npm run build
 node dist/index.js http://your-host/swagger.json
-# 可选第二个参数：自动刷新间隔（分钟），默认 10，0 表示关闭
-# node dist/index.js http://your-host/swagger.json 5
 ```
 
-Agent / MCP 客户端以 stdio 方式连接上述进程即可。文档 URL 通过命令行参数传入。
-
-自动刷新默认 10 分钟。命令行第二个参数优先，否则读环境变量 `SWAGGER_REFRESH_MINUTES`，设为 `0` 则只靠 `refreshSwagger` 手动更新。
-
-`npm run build` 会把 MCP 服务和运行时依赖打成单个 `dist/index.js`。Agent 侧只需要 Node 20+，不必再带项目的 `node_modules`。
+`npm run build` 会把 MCP 服务和运行时依赖打成单个 `dist/index.js`。运行时不必再带项目的 `node_modules`。
 
 Web 测试界面仍走 `web/server.js`，本地开发时才需要安装依赖。
+
+## Cursor MCP 配置
+
+把下面的内容写进项目的 `.cursor/mcp.json`（或 Cursor 用户级 MCP 配置）。把 `http://your-host/swagger.json` 换成你的 OpenAPI / Swagger 文档地址。
+
+Windows 示例用 `cmd /c`；macOS / Linux 可把 `command` 改成 `npx` 或 `node`，并去掉 `"/c"`。
+
+### npx
+
+```json
+{
+  "mcpServers": {
+    "swagger-api-info": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@zhedream/swagger-mcp-server",
+        "http://your-host/swagger.json"
+      ]
+    }
+  }
+}
+```
+
+指定刷新间隔（分钟）时，在 URL 后再加一个参数，例如 `"10"`；`"0"` 关闭自动刷新。
+
+### 源码安装
+
+先按上面完成 `npm install` 和 `npm run build`，再把路径换成你本机的 `dist/index.js`。
+
+```json
+{
+  "mcpServers": {
+    "swagger-api-info": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "node",
+        "<your-path>/swagger-mcp-server/dist/index.js",
+        "http://your-host/swagger.json"
+      ]
+    }
+  }
+}
+```
+
+改完配置后，在 Cursor MCP 设置里刷新该服务。
 
 ## 可用工具
 
@@ -159,6 +217,18 @@ npm run dev
 - `npm run web`：启动 Web 测试界面
 - `npm run dev`：打包并启动 Web 界面
 
+## 发布到 npm
+
+包名：`@zhedream/swagger-mcp-server`。平时正常 `git commit` 即可。
+
+需要发包时：先改版本（手改 `package.json` / `package-lock.json`，或 `npm version patch|minor|major --no-git-tag-version`），再自己 commit，然后：
+
+```bash
+npm publish --access public   # 仅首次；之后 npm publish 即可
+```
+
+`prepublishOnly` 会在 publish 前自动 `npm run build`。同一版本不能发第二次。
+
 ## 技术栈
 
 - Node.js 20+
@@ -168,10 +238,10 @@ npm run dev
 
 ## 故障排除
 
-1. **MCP 启动失败**：确认文档 URL 可访问，且已先执行 `npm run build`
+1. **MCP 启动失败**：确认文档 URL 可访问；源码安装需先 `npm run build`。Windows 上 Cursor 常用 `cmd /c` 启动
 2. **查询无结果**：确认关键字是否出现在路径、摘要或描述中，可先用 `searchApis` 且 `apiPath` 为 `*` 查看列表；多条命中时请改用更精确的路径或 `getApiDetails`
 3. **Web 端口占用**：默认 3000，可改 `web/server.js`
 
 ## 许可证
 
-ISC License
+ISC License © zhedream

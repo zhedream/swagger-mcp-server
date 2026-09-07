@@ -10,5 +10,8 @@ await build({
   format: "esm",
   target: "node20",
   outfile: "dist/index.js",
+  banner: {
+    js: "#!/usr/bin/env node\n",
+  },
   logLevel: "info",
 });
