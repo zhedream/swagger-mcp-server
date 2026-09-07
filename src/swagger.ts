@@ -1,188 +1,77 @@
-interface OpenAPIDocument {
-  openapi: string;
-  info: {
-    title: string;
-    version: string;
-  };
-  paths: {
-    [path: string]: {
-      [method: string]: OpenAPIOperation;
-    };
-  };
-  components?: {
-    schemas?: {
-      [name: string]: OpenAPISchema;
-    };
-  };
+import type { OpenAPIV3 } from "openapi-types";
+
+const HTTP_METHODS = [
+  "get",
+  "put",
+  "post",
+  "delete",
+  "options",
+  "head",
+  "patch",
+  "trace",
+] as const;
+
+function isReference(obj: unknown): obj is OpenAPIV3.ReferenceObject {
+  return !!obj && typeof obj === "object" && "$ref" in obj;
 }
 
-interface OpenAPIOperation {
-  tags?: string[];
-  summary?: string;
-  description?: string;
-  parameters?: OpenAPIParameter[];
-  requestBody?: OpenAPIRequestBody;
-  responses?: {
-    [code: string]: OpenAPIResponse;
-  };
-}
-
-interface OpenAPIParameter {
-  name: string;
-  in: string;
-  description?: string;
-  required?: boolean;
-  schema?: OpenAPISchema;
-  example?: any;
-  deprecated?: boolean;
-  allowEmptyValue?: boolean;
-}
-
-interface OpenAPIRequestBody {
-  description?: string;
-  required?: boolean;
-  content: {
-    [mediaType: string]: {
-      schema: OpenAPISchema;
-    };
-  };
-}
-
-interface OpenAPIResponse {
-  description: string;
-  content?: {
-    [mediaType: string]: {
-      schema: OpenAPISchema;
-    };
-  };
-}
-
-interface OpenAPISchema {
-  $ref?: string;
-  type?: string;
-  description?: string;
-  nullable?: boolean;
-  format?: string;
-  default?: any;
-  example?: any;
-  deprecated?: boolean;
-  readOnly?: boolean;
-  writeOnly?: boolean;
-  minimum?: number;
-  maximum?: number;
-  minLength?: number;
-  maxLength?: number;
-  pattern?: string;
-  enum?: any[];
-  properties?: {
-    [name: string]: OpenAPISchema;
-  };
-  required?: string[];
-  items?: OpenAPISchema;
-  additionalProperties?: boolean | OpenAPISchema;
-  oneOf?: OpenAPISchema[];
-  anyOf?: OpenAPISchema[];
-  allOf?: OpenAPISchema[];
-  minItems?: number;
-  maxItems?: number;
-  uniqueItems?: boolean;
-}
-
-interface ParsedSchema {
-  type?: string;
-  description?: string;
-  nullable?: boolean;
-  format?: string;
-  default?: any;
-  example?: any;
-  deprecated?: boolean;
-  readOnly?: boolean;
-  writeOnly?: boolean;
-  minimum?: number;
-  maximum?: number;
-  minLength?: number;
-  maxLength?: number;
-  pattern?: string;
-  enum?: any[];
-  properties?: {
-    [name: string]: ParsedSchema;
-  };
-  required?: string[];
-  items?: ParsedSchema;
-  additionalProperties?: boolean | ParsedSchema;
-  oneOf?: ParsedSchema[];
-  anyOf?: ParsedSchema[];
-  allOf?: ParsedSchema[];
-  minItems?: number;
-  maxItems?: number;
-  uniqueItems?: boolean;
-}
-
-interface ParsedParameter {
-  name: string;
-  in: string;
-  required: boolean;
-  description?: string;
-  schema?: ParsedSchema;
-  example?: any;
-  deprecated?: boolean;
-  allowEmptyValue?: boolean;
-}
-
-interface ParsedRequestBody {
-  description?: string;
-  required: boolean;
-  contentType: string;
-  schema: ParsedSchema;
-}
-
-interface ParsedResponse {
-  description: string;
-  contentType: string;
-  schema: ParsedSchema;
-}
-
-interface ParsedApiInfo {
+/** OpenAPI Operation 不含 path/method，查询结果需要把这两项带上。 */
+interface ApiInfo {
   path: string;
   method: string;
   summary?: string;
   description?: string;
   tags: string[];
-  parameters: ParsedParameter[];
-  requestBody?: ParsedRequestBody;
-  responses: {
-    [code: string]: ParsedResponse;
-  };
+  parameters: OpenAPIV3.ParameterObject[];
+  requestBody?: OpenAPIV3.RequestBodyObject;
+  responses: Record<string, OpenAPIV3.ResponseObject>;
 }
 
 export class SwaggerParser {
-  private swagger: OpenAPIDocument;
-  apis: Record<string, Record<string, ParsedApiInfo>>;
-  private refCache: Map<string, ParsedSchema>;
+  private swagger: OpenAPIV3.Document;
+  apis: Record<string, Record<string, ApiInfo>>;
+  private refCache: Map<string, OpenAPIV3.SchemaObject>;
 
-  constructor(swaggerDoc: OpenAPIDocument) {
+  constructor(swaggerDoc: OpenAPIV3.Document) {
     this.swagger = swaggerDoc;
     this.apis = {};
     this.refCache = new Map();
   }
 
-  public parseApis(): { [key: string]: any } {
-    const paths = this.swagger.paths;
+  public reload(swaggerDoc: OpenAPIV3.Document): Record<string, Record<string, ApiInfo>> {
+    this.swagger = swaggerDoc;
+    this.apis = {};
+    this.refCache = new Map();
+    return this.parseApis();
+  }
 
-    for (const [path, methods] of Object.entries(paths)) {
-      for (const [method, details] of Object.entries(methods)) {
-        const apiInfo: ParsedApiInfo = {
+  public parseApis(): Record<string, Record<string, ApiInfo>> {
+    const paths = this.swagger.paths ?? {};
+
+    for (const [path, pathItemOrRef] of Object.entries(paths)) {
+      if (!pathItemOrRef) continue;
+      const pathItem = this.resolve(pathItemOrRef);
+      const pathParameters = pathItem.parameters ?? [];
+
+      for (const method of HTTP_METHODS) {
+        const operation = pathItem[method];
+        if (!operation) continue;
+
+        const apiInfo: ApiInfo = {
           path,
           method: method.toUpperCase(),
-          summary: details.summary,
-          description: details.description,
-          tags: details.tags || [],
-          parameters: this.parseParameters(details.parameters),
-          requestBody: this.parseRequestBody(details.requestBody),
-          responses: this.parseResponses(details.responses || {})
+          summary: operation.summary,
+          description: operation.description,
+          tags: operation.tags || [],
+          parameters: this.parseParameters([
+            ...pathParameters,
+            ...(operation.parameters ?? []),
+          ]),
+          requestBody: this.parseRequestBody(operation.requestBody),
+          responses: this.parseResponses(operation.responses || {}),
         };
 
-        const apiPath = path.split('/').filter(p => p).join('.');
+        const apiPath = path.split("/").filter(Boolean).join(".");
         this.setNestedValue(this.apis, apiPath, apiInfo);
       }
     }
@@ -190,295 +79,209 @@ export class SwaggerParser {
     return this.apis;
   }
 
-  private setNestedValue(obj: any, path: string, value: any): void {
-    const parts = path.split('.');
-    let current = obj;
+  private setNestedValue(
+    obj: Record<string, unknown>,
+    path: string,
+    value: unknown,
+  ): void {
+    const parts = path.split(".");
+    let current: Record<string, unknown> = obj;
 
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
       if (i === parts.length - 1) {
         current[part] = value;
       } else {
-        current[part] = current[part] || {};
-        current = current[part];
+        const next = current[part];
+        if (!next || typeof next !== "object") {
+          current[part] = {};
+        }
+        current = current[part] as Record<string, unknown>;
       }
     }
   }
 
-  private parseParameters(parameters: OpenAPIParameter[] = []): ParsedParameter[] {
-    if (!parameters) return [];
-    return parameters.map(param => ({
-      name: param.name,
-      in: param.in,
-      required: param.required || false,
-      description: param.description,
-      schema: param.schema ? this.parseSchema(param.schema) : undefined,
-      example: param.example,
-      deprecated: param.deprecated,
-      allowEmptyValue: param.allowEmptyValue
-    }));
+  private parseParameters(
+    parameters: (OpenAPIV3.ReferenceObject | OpenAPIV3.ParameterObject)[] = [],
+  ): OpenAPIV3.ParameterObject[] {
+    return parameters.map((paramOrRef) => {
+      const param = this.resolve(paramOrRef);
+      return {
+        ...param,
+        required: param.required || param.in === "path",
+        schema: param.schema ? this.parseSchema(param.schema) : undefined,
+      };
+    });
   }
 
-  private parseRequestBody(requestBody?: OpenAPIRequestBody): ParsedRequestBody | undefined {
-    if (!requestBody?.content) return undefined;
+  private parseRequestBody(
+    requestBody?: OpenAPIV3.ReferenceObject | OpenAPIV3.RequestBodyObject,
+  ): OpenAPIV3.RequestBodyObject | undefined {
+    if (!requestBody) return undefined;
 
-    const firstContentType = Object.keys(requestBody.content)[0];
-    const schema = requestBody.content[firstContentType].schema;
+    const body = this.resolve(requestBody);
+    const content: OpenAPIV3.RequestBodyObject["content"] = {};
 
-    return {
-      description: requestBody.description,
-      required: requestBody.required || false,
-      contentType: firstContentType,
-      schema: this.parseSchema(schema)
-    };
-  }
-
-  private parseResponses(responses: { [code: string]: OpenAPIResponse }): { [code: string]: ParsedResponse } {
-    const parsedResponses: { [code: string]: ParsedResponse } = {};
-
-    for (const [code, response] of Object.entries(responses)) {
-      if (!response.content) continue;
-
-      const firstContentType = Object.keys(response.content)[0];
-      const schema = response.content[firstContentType].schema;
-
-      parsedResponses[code] = {
-        description: response.description,
-        contentType: firstContentType,
-        schema: this.parseSchema(schema)
+    for (const [mediaType, media] of Object.entries(body.content)) {
+      content[mediaType] = {
+        ...media,
+        schema: media.schema ? this.parseSchema(media.schema) : undefined,
       };
     }
 
-    return parsedResponses;
+    return { ...body, content };
   }
 
-  private parseSchema(schema: OpenAPISchema): ParsedSchema {
-    if (!schema) return {};
+  private parseResponses(
+    responses: OpenAPIV3.ResponsesObject,
+  ): Record<string, OpenAPIV3.ResponseObject> {
+    const parsed: Record<string, OpenAPIV3.ResponseObject> = {};
 
-    if (schema.$ref) {
-      return this.resolveReference(schema.$ref);
-    }
+    for (const [code, responseOrRef] of Object.entries(responses)) {
+      const response = this.resolve(responseOrRef);
+      const content: OpenAPIV3.ResponseObject["content"] = {};
 
-    const parsed: ParsedSchema = {
-      type: schema.type,
-      description: schema.description,
-      nullable: schema.nullable,
-      format: schema.format,
-      default: schema.default,
-      example: schema.example,
-      deprecated: schema.deprecated,
-      readOnly: schema.readOnly,
-      writeOnly: schema.writeOnly,
-      minimum: schema.minimum,
-      maximum: schema.maximum,
-      minLength: schema.minLength,
-      maxLength: schema.maxLength,
-      pattern: schema.pattern,
-      enum: schema.enum,
-      additionalProperties: schema.additionalProperties
-    };
-
-    // 清理未定义的属性
-    Object.keys(parsed).forEach(key => {
-      if (parsed[key as keyof ParsedSchema] === undefined) {
-        delete parsed[key as keyof ParsedSchema];
+      for (const [mediaType, media] of Object.entries(response.content ?? {})) {
+        content[mediaType] = {
+          ...media,
+          schema: media.schema ? this.parseSchema(media.schema) : undefined,
+        };
       }
-    });
 
-    // 处理属性
-    if (schema.properties) {
-      parsed.properties = {};
-      parsed.required = schema.required || [];
-
-      for (const [propName, propSchema] of Object.entries(schema.properties)) {
-        parsed.properties[propName] = this.parseSchema(propSchema);
-      }
+      parsed[code] = {
+        ...response,
+        content: Object.keys(content).length ? content : undefined,
+      };
     }
-
-    // 处理数组
-    if (schema.type === 'array') {
-      if (schema.items) {
-        parsed.items = this.parseSchema(schema.items);
-      }
-      parsed.minItems = schema.minItems;
-      parsed.maxItems = schema.maxItems;
-      parsed.uniqueItems = schema.uniqueItems;
-    }
-
-    // 处理联合类型
-    if (schema.oneOf) parsed.oneOf = schema.oneOf.map(s => this.parseSchema(s));
-    if (schema.anyOf) parsed.anyOf = schema.anyOf.map(s => this.parseSchema(s));
-    if (schema.allOf) parsed.allOf = schema.allOf.map(s => this.parseSchema(s));
 
     return parsed;
   }
 
-  private resolveReference(ref: string): ParsedSchema {
-    if (this.refCache.has(ref)) {
-      return this.refCache.get(ref)!;
+  private parseSchema(
+    schema: OpenAPIV3.ReferenceObject | OpenAPIV3.SchemaObject,
+  ): OpenAPIV3.SchemaObject {
+    if (!schema) {
+      return {};
     }
 
-    const parts = ref.split('/').slice(1);
-    let current: any = this.swagger;
+    if (isReference(schema)) {
+      return this.resolveReference(schema.$ref);
+    }
 
-    for (const part of parts) {
-      if (!current || !current[part]) {
-        throw new Error(`无法解析引用: ${ref}`);
+    const parsed = { ...schema } as OpenAPIV3.SchemaObject;
+
+    if (schema.properties) {
+      parsed.properties = {};
+      for (const [name, prop] of Object.entries(schema.properties)) {
+        parsed.properties[name] = this.parseSchema(prop);
       }
-      current = current[part];
     }
 
-    const tempObj: ParsedSchema = {};
-    this.refCache.set(ref, tempObj);
+    if ("items" in schema && schema.items) {
+      (parsed as OpenAPIV3.ArraySchemaObject).items = this.parseSchema(
+        schema.items,
+      );
+    }
 
-    const resolved = this.parseSchema(current);
-    Object.assign(tempObj, resolved);
+    if (
+      typeof schema.additionalProperties === "object" &&
+      schema.additionalProperties
+    ) {
+      parsed.additionalProperties = this.parseSchema(
+        schema.additionalProperties,
+      );
+    }
 
-    return tempObj;
+    if (schema.oneOf) {
+      parsed.oneOf = schema.oneOf.map((item) => this.parseSchema(item));
+    }
+    if (schema.anyOf) {
+      parsed.anyOf = schema.anyOf.map((item) => this.parseSchema(item));
+    }
+    if (schema.allOf) {
+      parsed.allOf = schema.allOf.map((item) => this.parseSchema(item));
+    }
+    if (schema.not) {
+      parsed.not = this.parseSchema(schema.not);
+    }
+
+    return parsed;
   }
 
-  /**
-   * 将 ParsedSchema 转换为可 JSON 序列化的格式
-   * 通过追踪已访问的对象来避免循环引用
-   */
-  private serializeSchema(schema: ParsedSchema, visited = new WeakSet()): any {
-    if (!schema || typeof schema !== 'object') {
-      return schema;
+  private resolve<T>(obj: T | OpenAPIV3.ReferenceObject): T {
+    if (!isReference(obj)) {
+      return obj;
+    }
+    return this.resolve(
+      this.lookupRef(obj.$ref) as T | OpenAPIV3.ReferenceObject,
+    );
+  }
+
+  private lookupRef(ref: string): unknown {
+    const pointer = ref.startsWith("#") ? ref.slice(1) : ref;
+    const parts = pointer
+      .split("/")
+      .filter(Boolean)
+      .map((part) => part.replace(/~1/g, "/").replace(/~0/g, "~"));
+
+    let current: unknown = this.swagger;
+    for (const part of parts) {
+      if (!current || typeof current !== "object" || !(part in current)) {
+        throw new Error(`无法解析引用: ${ref}`);
+      }
+      current = (current as Record<string, unknown>)[part];
+    }
+    return current;
+  }
+
+  private resolveReference(ref: string): OpenAPIV3.SchemaObject {
+    const cached = this.refCache.get(ref);
+    if (cached) {
+      return cached;
     }
 
-    // 如果已经访问过这个对象，返回一个引用标记
-    if (visited.has(schema)) {
+    const placeholder = {} as OpenAPIV3.SchemaObject;
+    this.refCache.set(ref, placeholder);
+
+    const resolved = this.parseSchema(
+      this.lookupRef(ref) as OpenAPIV3.ReferenceObject | OpenAPIV3.SchemaObject,
+    );
+    Object.assign(placeholder, resolved);
+
+    return placeholder;
+  }
+
+  private serializeValue(
+    value: unknown,
+    visited = new WeakSet<object>(),
+  ): unknown {
+    if (value === null || typeof value !== "object") {
+      return value;
+    }
+
+    if (visited.has(value)) {
       return { $circular: true };
     }
 
-    visited.add(schema);
+    visited.add(value);
 
-    const result: any = {};
+    if (Array.isArray(value)) {
+      return value.map((item) => this.serializeValue(item, visited));
+    }
 
-    // 复制基本属性
-    const basicProps = [
-      'type', 'description', 'nullable', 'format', 'default',
-      'example', 'deprecated', 'readOnly', 'writeOnly',
-      'minimum', 'maximum', 'minLength', 'maxLength',
-      'pattern', 'enum', 'minItems', 'maxItems', 'uniqueItems'
-    ];
-
-    for (const prop of basicProps) {
-      if (schema[prop as keyof ParsedSchema] !== undefined) {
-        result[prop] = schema[prop as keyof ParsedSchema];
+    const result: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value)) {
+      if (nested !== undefined) {
+        result[key] = this.serializeValue(nested, visited);
       }
     }
-
-    // 处理 required 数组
-    if (schema.required) {
-      result.required = [...schema.required];
-    }
-
-    // 递归处理 properties
-    if (schema.properties) {
-      result.properties = {};
-      for (const [key, value] of Object.entries(schema.properties)) {
-        result.properties[key] = this.serializeSchema(value, visited);
-      }
-    }
-
-    // 递归处理 items
-    if (schema.items) {
-      result.items = this.serializeSchema(schema.items, visited);
-    }
-
-    // 递归处理联合类型
-    if (schema.oneOf) {
-      result.oneOf = schema.oneOf.map(s => this.serializeSchema(s, visited));
-    }
-    if (schema.anyOf) {
-      result.anyOf = schema.anyOf.map(s => this.serializeSchema(s, visited));
-    }
-    if (schema.allOf) {
-      result.allOf = schema.allOf.map(s => this.serializeSchema(s, visited));
-    }
-
-    // 处理 additionalProperties
-    if (schema.additionalProperties !== undefined) {
-      if (typeof schema.additionalProperties === 'boolean') {
-        result.additionalProperties = schema.additionalProperties;
-      } else {
-        result.additionalProperties = this.serializeSchema(schema.additionalProperties, visited);
-      }
-    }
-
     return result;
   }
 
-  /**
-   * 将整个 API 信息序列化为可 JSON 化的格式
-   */
-  private serializeApiInfo(apiInfo: ParsedApiInfo): any {
-    return {
-      path: apiInfo.path,
-      method: apiInfo.method,
-      summary: apiInfo.summary,
-      description: apiInfo.description,
-      tags: [...apiInfo.tags],
-      parameters: apiInfo.parameters.map(param => ({
-        name: param.name,
-        in: param.in,
-        required: param.required,
-        description: param.description,
-        schema: param.schema ? this.serializeSchema(param.schema) : undefined,
-        example: param.example,
-        deprecated: param.deprecated,
-        allowEmptyValue: param.allowEmptyValue
-      })),
-      requestBody: apiInfo.requestBody ? {
-        description: apiInfo.requestBody.description,
-        required: apiInfo.requestBody.required,
-        contentType: apiInfo.requestBody.contentType,
-        schema: this.serializeSchema(apiInfo.requestBody.schema)
-      } : undefined,
-      responses: Object.entries(apiInfo.responses).reduce((acc, [code, response]) => {
-        acc[code] = {
-          description: response.description,
-          contentType: response.contentType,
-          schema: this.serializeSchema(response.schema)
-        };
-        return acc;
-      }, {} as any)
-    };
+  public getSerializableApis(): unknown {
+    return this.serializeValue(this.apis);
   }
 
-  /**
-   * 获取可序列化的 APIs（用于 JSON 输出）
-   */
-  public getSerializableApis(): any {
-    const serialized: any = {};
-
-    const serialize = (obj: any): any => {
-      if (!obj || typeof obj !== 'object') {
-        return obj;
-      }
-
-      // 如果是 ParsedApiInfo，进行序列化
-      if ('path' in obj && 'method' in obj && 'tags' in obj) {
-        return this.serializeApiInfo(obj as ParsedApiInfo);
-      }
-
-      // 递归处理嵌套对象
-      const result: any = {};
-      for (const [key, value] of Object.entries(obj)) {
-        result[key] = serialize(value);
-      }
-      return result;
-    };
-
-    return serialize(this.apis);
-  }
-
-  /**
-   * 将 APIs 转换为 JSON 字符串
-   * @param apiPath 可选的 API 路径过滤，支持格式：/api/users、/api/users/create、api/users/create
-   * @param pretty 是否格式化输出
-   */
   public toJSON(apiPath?: string, pretty: boolean = true): string {
     let serialized = this.getSerializableApis();
 
@@ -486,13 +289,11 @@ export class SwaggerParser {
       serialized = this.filterByPath(serialized, apiPath);
     }
 
-    return pretty ? JSON.stringify(serialized, null, 2) : JSON.stringify(serialized);
+    return pretty
+      ? JSON.stringify(serialized, null, 2)
+      : JSON.stringify(serialized);
   }
 
-  /**
-   * 将 APIs 转换为可读的文本格式
-   * @param apiPath 可选的 API 路径过滤，支持格式：/api/users、/api/users/create、api/users/create
-   */
   public toText(apiPath?: string): string {
     const lines: string[] = [];
     let serialized = this.getSerializableApis();
@@ -501,44 +302,59 @@ export class SwaggerParser {
       serialized = this.filterByPath(serialized, apiPath);
     }
 
-    const printSchema = (schema: any, indent: string = ''): void => {
-      if (!schema || typeof schema !== 'object') {
+    const printSchema = (schema: unknown, indent: string = ""): void => {
+      if (!schema || typeof schema !== "object") {
         return;
       }
 
-      if (schema.$circular) {
+      const obj = schema as Record<string, unknown>;
+      if (obj.$circular) {
         lines.push(`${indent}[循环引用]`);
         return;
       }
 
-      if (schema.type) {
-        lines.push(`${indent}类型: ${schema.type}`);
+      if (obj.type) {
+        lines.push(`${indent}类型: ${obj.type}`);
       }
-      if (schema.description) {
-        lines.push(`${indent}描述: ${schema.description}`);
+      if (typeof obj.description === "string") {
+        lines.push(`${indent}描述: ${obj.description}`);
       }
-      if (schema.format) {
-        lines.push(`${indent}格式: ${schema.format}`);
+      if (typeof obj.format === "string") {
+        lines.push(`${indent}格式: ${obj.format}`);
       }
-      if (schema.enum) {
-        lines.push(`${indent}枚举值: ${schema.enum.join(', ')}`);
+      if (Array.isArray(obj.enum)) {
+        lines.push(`${indent}枚举值: ${obj.enum.join(", ")}`);
       }
-      if (schema.properties) {
+      if (obj.properties && typeof obj.properties === "object") {
+        const required = Array.isArray(obj.required) ? obj.required : [];
         lines.push(`${indent}属性:`);
-        for (const [key, value] of Object.entries(schema.properties)) {
-          const required = schema.required?.includes(key) ? ' [必填]' : '';
-          lines.push(`${indent}  - ${key}${required}:`);
-          printSchema(value, indent + '    ');
+        for (const [key, value] of Object.entries(
+          obj.properties as Record<string, unknown>,
+        )) {
+          const mark = required.includes(key) ? " [必填]" : "";
+          lines.push(`${indent}  - ${key}${mark}:`);
+          printSchema(value, indent + "    ");
         }
       }
-      if (schema.items) {
+      if (obj.items) {
         lines.push(`${indent}数组项:`);
-        printSchema(schema.items, indent + '  ');
+        printSchema(obj.items, indent + "  ");
       }
     };
 
-    const printApi = (apiInfo: any, path: string): void => {
-      lines.push('='.repeat(80));
+    const firstContent = (
+      content?:
+        | OpenAPIV3.RequestBodyObject["content"]
+        | OpenAPIV3.ResponseObject["content"],
+    ) => {
+      if (!content) return undefined;
+      const contentType = Object.keys(content)[0];
+      if (!contentType) return undefined;
+      return { contentType, media: content[contentType] };
+    };
+
+    const printApi = (apiInfo: ApiInfo, path: string): void => {
+      lines.push("=".repeat(80));
       lines.push(`路径: ${path}`);
       lines.push(`方法: ${apiInfo.method}`);
       if (apiInfo.summary) {
@@ -548,54 +364,67 @@ export class SwaggerParser {
         lines.push(`描述: ${apiInfo.description}`);
       }
       if (apiInfo.tags?.length) {
-        lines.push(`标签: ${apiInfo.tags.join(', ')}`);
+        lines.push(`标签: ${apiInfo.tags.join(", ")}`);
       }
 
       if (apiInfo.parameters?.length) {
-        lines.push('\n参数:');
+        lines.push("\n参数:");
         for (const param of apiInfo.parameters) {
-          const required = param.required ? ' [必填]' : '';
+          const required = param.required ? " [必填]" : "";
           lines.push(`  - ${param.name} (${param.in})${required}`);
           if (param.description) {
             lines.push(`    描述: ${param.description}`);
           }
           if (param.schema) {
-            printSchema(param.schema, '    ');
+            printSchema(param.schema, "    ");
           }
         }
       }
 
-      if (apiInfo.requestBody) {
-        lines.push('\n请求体:');
-        lines.push(`  Content-Type: ${apiInfo.requestBody.contentType}`);
-        lines.push(`  必填: ${apiInfo.requestBody.required ? '是' : '否'}`);
+      const requestMedia = firstContent(apiInfo.requestBody?.content);
+      if (apiInfo.requestBody && requestMedia) {
+        lines.push("\n请求体:");
+        lines.push(`  Content-Type: ${requestMedia.contentType}`);
+        lines.push(`  必填: ${apiInfo.requestBody.required ? "是" : "否"}`);
         if (apiInfo.requestBody.description) {
           lines.push(`  描述: ${apiInfo.requestBody.description}`);
         }
-        lines.push('  Schema:');
-        printSchema(apiInfo.requestBody.schema, '    ');
+        lines.push("  Schema:");
+        printSchema(requestMedia.media.schema, "    ");
       }
 
       if (apiInfo.responses) {
-        lines.push('\n响应:');
+        lines.push("\n响应:");
         for (const [code, response] of Object.entries(apiInfo.responses)) {
-          lines.push(`  状态码 ${code}: ${(response as any).description}`);
-          lines.push(`    Content-Type: ${(response as any).contentType}`);
-          lines.push('    Schema:');
-          printSchema((response as any).schema, '      ');
+          const responseMedia = firstContent(response.content);
+          lines.push(`  状态码 ${code}: ${response.description}`);
+          if (responseMedia) {
+            lines.push(`    Content-Type: ${responseMedia.contentType}`);
+            lines.push("    Schema:");
+            printSchema(responseMedia.media.schema, "      ");
+          }
         }
       }
 
-      lines.push('');
+      lines.push("");
     };
 
-    const traverse = (obj: any, currentPath: string = ''): void => {
+    const traverse = (obj: unknown, currentPath: string = ""): void => {
+      if (!obj || typeof obj !== "object") {
+        return;
+      }
+
       for (const [key, value] of Object.entries(obj)) {
         const newPath = currentPath ? `${currentPath}.${key}` : key;
 
-        if (value && typeof value === 'object' && 'path' in value && 'method' in value) {
-          printApi(value, `/${newPath.replace(/\./g, '/')}`);
-        } else if (value && typeof value === 'object') {
+        if (
+          value &&
+          typeof value === "object" &&
+          "path" in value &&
+          "method" in value
+        ) {
+          printApi(value as ApiInfo, `/${newPath.replace(/\./g, "/")}`);
+        } else if (value && typeof value === "object") {
           traverse(value, newPath);
         }
       }
@@ -603,41 +432,36 @@ export class SwaggerParser {
 
     traverse(serialized);
 
-    return lines.join('\n');
+    return lines.join("\n");
   }
 
-  /**
-   * 根据路径过滤 API
-   * @param apis 序列化后的 API 对象
-   * @param apiPath API 路径，支持格式：/api/users、/api/users/create、api/users/create
-   * @returns 过滤后的 API 对象
-   */
-  private filterByPath(apis: any, apiPath: string): any {
-    // 标准化路径：移除开头的斜杠，将斜杠替换为点号
+  private filterByPath(apis: unknown, apiPath: string): unknown {
     const normalizedPath = apiPath
-      .replace(/^\/+/, '') // 移除开头的斜杠
-      .replace(/\/+$/, '') // 移除结尾的斜杠
-      .replace(/\//g, '.'); // 将斜杠替换为点号
+      .replace(/^\/+/, "")
+      .replace(/\/+$/, "")
+      .replace(/\//g, ".");
 
     if (!normalizedPath) {
       return apis;
     }
 
-    const pathParts = normalizedPath.split('.');
-    let current = apis;
+    const pathParts = normalizedPath.split(".");
+    let current: unknown = apis;
 
-    // 逐层查找
     for (const part of pathParts) {
-      if (current && typeof current === 'object' && part in current) {
-        current = current[part];
+      if (current && typeof current === "object" && part in current) {
+        current = (current as Record<string, unknown>)[part];
       } else {
-        // 路径不存在，返回空对象
         return {};
       }
     }
 
-    // 如果找到的是单个 API 信息，包装成对象返回
-    if (current && typeof current === 'object' && 'path' in current && 'method' in current) {
+    if (
+      current &&
+      typeof current === "object" &&
+      "path" in current &&
+      "method" in current
+    ) {
       const lastPart = pathParts[pathParts.length - 1];
       return { [lastPart]: current };
     }
@@ -645,17 +469,15 @@ export class SwaggerParser {
     return current || {};
   }
 
-  /**
-   * 获取指定路径的 API 信息
-   * @param apiPath API 路径，支持格式：/api/users、/api/users/create、api/users/create
-   * @returns API 信息对象或 undefined
-   */
-  public getApiByPath(apiPath: string): any {
+  public getApiByPath(apiPath: string): unknown {
     const serialized = this.getSerializableApis();
     const filtered = this.filterByPath(serialized, apiPath);
 
-    // 如果结果为空对象，返回 undefined
-    if (Object.keys(filtered).length === 0) {
+    if (
+      !filtered ||
+      typeof filtered !== "object" ||
+      Object.keys(filtered).length === 0
+    ) {
       return undefined;
     }
 

@@ -59,7 +59,9 @@ npm run web
 
 ### 4. 查看可用工具
 连接成功后，"可用工具" 区域会显示 MCP 服务器提供的工具列表，通常包括：
-- `getApiInfo`: 获取 API 信息的工具
+- `searchApis`: 检索 API（路径 / 名称 / 关键字 / `*`）
+- `getApiDetails`: 按路径批量获取完整详情
+- `refreshSwagger`: 刷新 Swagger 文档
 
 ### 5. 测试 API 查询
 1. 在 "Controller 名称" 输入框中输入控制器名称，例如：`UserController`
@@ -126,7 +128,7 @@ curl http://localhost:3000/api/mcp/tools
 # 调用工具
 curl -X POST http://localhost:3000/api/mcp/call-tool \
   -H "Content-Type: application/json" \
-  -d '{"name": "getApiInfo", "arguments": {"controller": "UserController", "method": "getUserById"}}'
+  -d '{"name": "searchApis", "arguments": {"apiPath": "/Check/GetCheckRecordDetail"}}'
 ```
 
 ### 健康检查

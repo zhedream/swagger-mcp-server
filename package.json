@@ -1,36 +1,37 @@
 {
-  "name": "swagger-api-info-mcp",
+  "name": "swagger-mcp-server",
   "version": "1.0.0",
   "type": "module",
-  "description": "MCP service for getting Swagger API information with web testing interface",
-  "main": "src/index.ts",
+  "description": "MCP server that parses Swagger (OpenAPI) documents for agents",
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "build": "tsc --watch",
-    "start": "node dist/index.js http://127.0.0.1:3000/api2.json",
-    "client": "node dist/client.js",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
     "web": "node web/server.js",
-    "dev": "npm run build && npm run web",
-    "test": "node dist/client.js"
-    
+    "dev": "npm run build && npm run web"
   },
   "keywords": [
     "mcp",
     "swagger",
-    "api",
-    "web-interface"
+    "openapi",
+    "agent"
   ],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@types/express": "^4.17.22",
-    "@types/node": "^18.19.76",
-    "@types/node-fetch": "^2.6.11",
-    "typescript": "^5.7.3"
+    "@types/express": "^4.17.25",
+    "@types/node": "^22.18.0",
+    "esbuild": "^0.25.0",
+    "openapi-types": "^12.1.3",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.5.0",
-    "express": "^4.21.2",
-    "node-fetch": "^3.3.2",
-    "zod": "^3.22.4"
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "express": "^4.22.2",
+    "zod": "^4.2.0"
   }
 }

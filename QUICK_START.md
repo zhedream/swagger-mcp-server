@@ -1,160 +1,54 @@
-# 🚀 MCP 测试工具 - 快速开始
+# 快速开始
 
-这是一个用于测试 Model Context Protocol (MCP) 服务的现代化 Web 应用程序。
+本仓库的主产物是 **Swagger MCP Server**：解析 Swagger 文档（也兼容 OpenAPI JSON），给 Agent 用。  
+下面的 Web 界面只用于本地手工测试。
 
-## ⚡ 快速启动
+## Agent 用法
 
-### 1. 安装和构建
 ```bash
-# 安装依赖
 npm install
-
-# 构建项目
 npm run build
-
-# 启动 Web 测试工具
-npm run web
+node dist/index.js http://your-host/swagger.json
 ```
 
-### 2. 访问界面
-打开浏览器，访问: **http://localhost:3000**
+把该命令配进 MCP 客户端（stdio）。文档 URL 作为第一个参数传入。可选第二个参数是自动刷新分钟数（默认 10，`0` 关闭）。也可用 `SWAGGER_REFRESH_MINUTES`。
 
-### 3. 开始测试
-1. 输入您的 Swagger JSON URL（例如：`http://localhost:8080/swagger.json`）
-2. 点击"启动 MCP 服务"
-3. 等待连接成功
-4. 在查询区域输入 Controller 和 Method 名称
-5. 点击查询按钮查看结果
+构建产物是单个 `dist/index.js`，已打进 MCP SDK 和 Zod，运行不再依赖项目里的 `node_modules`。
 
-## 🎯 主要功能
+## 本地 Web 测试
 
-### ✅ 已完成的功能
-- ✅ **现代化 UI**: 美观的渐变背景和卡片式布局
-- ✅ **实时状态**: 连接状态实时显示（红/橙/绿圆点）
-- ✅ **MCP 服务器管理**: 一键启动/停止 MCP 服务器
-- ✅ **工具列表**: 自动获取并显示可用工具
-- ✅ **API 查询**: 支持 Controller 和 Method 查询
-- ✅ **结果显示**: 格式化的 JSON 结果展示
-- ✅ **操作日志**: 详细的时间戳日志记录
-- ✅ **响应式设计**: 支持桌面和移动设备
-- ✅ **错误处理**: 完善的错误提示和处理
-- ✅ **RESTful API**: 提供编程接口
-
-### 🔧 技术栈
-- **前端**: HTML5 + CSS3 + 原生 JavaScript
-- **后端**: Node.js + Express.js + TypeScript
-- **协议**: Model Context Protocol (MCP)
-- **UI 框架**: Font Awesome + Inter 字体
-
-## 📱 界面预览
-
-### 主界面布局
-```
-┌─────────────────────────────────────┐
-│           MCP 测试工具               │
-│     测试您的 Model Context Protocol 服务  │
-├─────────────────────────────────────┤
-│ 🔌 服务器连接                        │
-│  ○ 状态: [未连接/连接中/已连接]         │
-│  📄 Swagger URL: [输入框]           │
-│  ▶️ [启动 MCP 服务] 按钮             │
-├─────────────────────────────────────┤
-│ 🔧 可用工具                         │
-│  📋 工具列表 (自动加载)               │
-├─────────────────────────────────────┤
-│ 🔍 API 信息查询                     │
-│  Controller: [输入框]               │
-│  Method: [输入框]                   │
-│  🚀 [查询 API 信息] 按钮             │
-├─────────────────────────────────────┤
-│ 📋 查询结果                         │
-│  💻 JSON 格式结果显示               │
-├─────────────────────────────────────┤
-│ 📝 操作日志                         │
-│  ⏰ 带时间戳的详细日志               │
-│  🗑️ [清空日志] 按钮                 │
-└─────────────────────────────────────┘
-```
-
-## 🧪 使用示例
-
-### 示例 1: 测试用户 API
-```
-Swagger URL: http://localhost:8080/swagger.json
-Controller: UserController
-Method: getUserById
-```
-
-### 示例 2: 测试商品 API  
-```
-Swagger URL: https://api.example.com/swagger.json
-Controller: ProductController
-Method: getProductList
-```
-
-## 🔗 API 端点
-
-### Web 界面
-- **主页**: `GET /`
-- **健康检查**: `GET /api/health`
-
-### MCP 管理
-- **启动服务**: `POST /api/mcp/start`
-- **停止服务**: `POST /api/mcp/stop`
-- **获取工具**: `GET /api/mcp/tools`
-- **调用工具**: `POST /api/mcp/call-tool`
-
-## 💡 使用技巧
-
-### 1. 快速测试
-使用 curl 命令可以快速测试 API：
 ```bash
-# 健康检查
-curl http://localhost:3000/api/health
-
-# 启动 MCP 服务
-curl -X POST http://localhost:3000/api/mcp/start \
-  -H "Content-Type: application/json" \
-  -d '{"swaggerUrl": "http://localhost:8080/swagger.json"}'
-```
-
-### 2. 开发模式
-```bash
-# 开发模式（自动构建 + 启动）
+npm install
 npm run dev
 ```
 
-### 3. 单独启动 MCP 服务器
-```bash
-# 直接启动 MCP 服务器（不通过 Web 界面）
-npm start http://your-swagger-url/swagger.json
-```
+浏览器打开 **http://localhost:3000**。
 
-## 🐛 常见问题
+1. 选择 Swagger JSON URL（可用本地 `api.json` / `api2.json`）
+2. 点击「启动 MCP 服务」
+3. 在「接口列表」搜索，或在「API 信息查询」填写路径 / 名称 / `*`
+4. 点击「查询 API 信息」
 
-### Q: 连接失败怎么办？
-A: 检查 Swagger URL 是否正确且可访问，确保网络连接正常。
+路径格式示例：
 
-### Q: 查询没有结果？
-A: 确认 Controller 和 Method 名称拼写正确，检查 Swagger 文档中是否存在该 API。
+- `/api/apis/create`
+- `api/apis/create`
+- `api.apis.create`
 
-### Q: 端口被占用？
-A: 默认使用端口 3000，如果被占用可以修改 `web/server.js` 中的端口号。
+## MCP 工具
 
-## 📚 更多文档
+| 工具             | 作用                                   | 参数                           |
+| ---------------- | -------------------------------------- | ------------------------------ |
+| `searchApis`     | 检索：1 条详情，多条简要，`*` 全部简要 | `apiPath`                      |
+| `getApiDetails`  | 按路径批量拉完整详情                   | `apiPaths`（string[]，至少 1） |
+| `refreshSwagger` | 立即重新拉取文档，刷新内存中的接口数据 | 无                             |
 
-- 📖 **详细文档**: 查看 `README.md`
-- 🎯 **使用演示**: 查看 `web/demo.md`
-- 🔧 **项目结构**: 查看项目根目录
+## 常见问题
 
-## ✨ 特色亮点
+**连接失败**：检查文档 URL 是否可访问。本地示例需先启动 Web（`http://127.0.0.1:3000/api.json`）。
 
-- 🎨 **现代化设计**: 渐变背景 + 卡片式布局
-- 🚀 **即开即用**: 无需复杂配置
-- 📱 **响应式**: 完美适配各种设备
-- 🔍 **实时反馈**: 状态和日志实时更新
-- 🛠️ **开发友好**: 清晰的 API 和文档
+**查询没有结果**：用接口列表确认真实 path，不要再用 Controller / Method 那套旧参数。
 
----
+**端口被占用**：默认 3000，改 `web/server.js`。
 
-🎉 **现在就开始使用吧！** 访问 http://localhost:3000 体验现代化的 MCP 测试工具！
+更完整的说明见 `README.md`。
