@@ -5,11 +5,13 @@
   "description": "MCP service for getting Swagger API information with web testing interface",
   "main": "src/index.ts",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
+    "build": "tsc --watch",
+    "start": "node dist/index.js http://127.0.0.1:3000/api2.json",
     "client": "node dist/client.js",
-    "web": "npm run build && node web/server.js",
-    "dev": "npm run build && npm run web"
+    "web": "node web/server.js",
+    "dev": "npm run build && npm run web",
+    "test": "node dist/client.js"
+    
   },
   "keywords": [
     "mcp",
